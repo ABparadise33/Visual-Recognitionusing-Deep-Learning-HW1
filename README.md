@@ -1,4 +1,4 @@
-# NYCU Computer Vision 2026 HW1
+# NYCU Visual Recognitionusing Deep Learning HW1
 
 **Student ID:** [314554035]  
 **Name:** [張翊鞍]  
