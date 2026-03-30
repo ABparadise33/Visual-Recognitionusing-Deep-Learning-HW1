@@ -25,7 +25,7 @@ TEST_DIR = './data/test'
 TRAIN_DIR = './data/train'
 MODEL_WEIGHTS = 'best_resnet101_full_ft.pth'
 NUM_CLASSES = 100
-OUTPUT_FILE = 'prediction_resnet101_full_ft.csv'
+OUTPUT_FILE = 'prediction.csv'
 
 
 class InferenceDataset(torch_data.Dataset):
