@@ -14,36 +14,35 @@ During inference, **10-Crop Test Time Augmentation (TTA)** is applied to average
 It is recommended to use Python 3.9 or higher with a virtual environment (e.g., Conda, Poetry, or Virtualenv).
 
 To install the required dependencies, run:
-` ` `bash
+```bash
 pip install -r requirements.txt
-` ` `
-*(Note: Please ensure your `requirements.txt` includes `torch`, `torchvision`, `pandas`, `tqdm`, and `Pillow`.)*
+```
 
 ## Usage
 
 ### Dataset Preparation
 Please ensure the dataset is placed in the root directory under the `./data` folder with the following structure:
-` ` `text
+```text
 .
-├── data/
+├── data/ 
 │   ├── train/
 │   ├── val/
 │   └── test/
-` ` `
+```
 
 ### Training
 To train the final model (Full fine-tuning with BatchNorm + GELU head), execute the following command:
-` ` `bash
+```bash
 python train.py
-` ` `
+```
 * The training script will automatically save the best model weights as `best_resnet101_full_ft.pth`.
 
 
 ### Inference
 To run inference on the test set using the trained weights and generate the submission file, execute:
-` ` `bash
+```bash
 python inference.py
-` ` `
+```
 * The script will load `best_resnet101_full_ft.pth` and output the predictions to `prediction_resnet101_full_ft.csv`.
 * Inside the zipped submission file, this CSV will be renamed to `prediction.csv` as required by the CodaBench platform.
 
