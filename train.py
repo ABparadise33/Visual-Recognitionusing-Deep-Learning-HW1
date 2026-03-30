@@ -1,5 +1,4 @@
-"""
-HW1 Training Script: Image Classification using ResNet-101.
+"""HW1 Training Script: Image Classification using ResNet-101.
 
 Features:
 - ResNet-101 Backbone (ImageNet1K_V2 weights)
@@ -10,42 +9,71 @@ Features:
 """
 
 import os
+from typing import Tuple
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader
-from torchvision import datasets, models, transforms
+from torch import nn
+from torch import optim
+from torch.utils import data as torch_data
+from torchvision import datasets
+from torchvision import models
+from torchvision import transforms
 from tqdm import tqdm
 
 
 # Constants
 BATCH_SIZE = 64
 EPOCHS = 30
-LR = 5e-5  # A smaller learning rate is recommended for full fine-tuning
+LR = 5e-5
 WEIGHT_DECAY = 0.05
 DATA_DIR = './data'
 NUM_CLASSES = 100
 SAVE_PATH = 'best_resnet101_full_ft.pth'
 
 
-def mixup_data(x, y, alpha=1.0):
-    """Perform MixUp data augmentation."""
+def mixup_data(
+    x: torch.Tensor, y: torch.Tensor, alpha: float = 1.0
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
+    """Performs MixUp data augmentation.
+
+    Args:
+        x: The input image batch tensor.
+        y: The target label batch tensor.
+        alpha: The alpha parameter for the Beta distribution.
+
+    Returns:
+        A tuple containing:
+            - mixed_x: The mixed input tensor.
+            - y_a: The original target label tensor.
+            - y_b: The shuffled target label tensor.
+            - lam: The mixing ratio lambda.
+    """
     if alpha > 0:
         lam = np.random.beta(alpha, alpha)
     else:
-        lam = 1
-    batch_size = x.size()[0]
+        lam = 1.0
+
+    batch_size = x.size(0)
     index = torch.randperm(batch_size).to(x.device)
     mixed_x = lam * x + (1 - lam) * x[index, :]
     y_a, y_b = y, y[index]
-    
-    return mixed_x, y_a, y_b, lam
+
+    return mixed_x, y_a, y_b, float(lam)
 
 
-def rand_bbox(size, lam):
-    """Generate a random bounding box for CutMix."""
+def rand_bbox(
+    size: torch.Size, lam: float
+) -> Tuple[int, int, int, int]:
+    """Generates a random bounding box for CutMix.
+
+    Args:
+        size: The size of the input tensor.
+        lam: The mixing ratio lambda.
+
+    Returns:
+        A tuple of (bbx1, bby1, bbx2, bby2) coordinates.
+    """
     w = size[2]
     h = size[3]
     cut_rat = np.sqrt(1. - lam)
@@ -59,30 +87,47 @@ def rand_bbox(size, lam):
     bby1 = np.clip(cy - cut_h // 2, 0, h)
     bbx2 = np.clip(cx + cut_w // 2, 0, w)
     bby2 = np.clip(cy + cut_h // 2, 0, h)
-    
+
     return bbx1, bby1, bbx2, bby2
 
 
-def cutmix_data(x, y, alpha=1.0):
-    """Perform CutMix data augmentation."""
+def cutmix_data(
+    x: torch.Tensor, y: torch.Tensor, alpha: float = 1.0
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, float]:
+    """Performs CutMix data augmentation.
+
+    Args:
+        x: The input image batch tensor.
+        y: The target label batch tensor.
+        alpha: The alpha parameter for the Beta distribution.
+
+    Returns:
+        A tuple containing:
+            - x: The augmented input tensor.
+            - y_a: The original target label tensor.
+            - y_b: The shuffled target label tensor.
+            - lam: The effective mixing ratio lambda.
+    """
     lam = np.random.beta(alpha, alpha)
-    batch_size = x.size()[0]
+    batch_size = x.size(0)
     index = torch.randperm(batch_size).to(x.device)
     y_a, y_b = y, y[index]
+
     bbx1, bby1, bbx2, bby2 = rand_bbox(x.size(), lam)
     x[:, :, bbx1:bbx2, bby1:bby2] = x[index, :, bbx1:bbx2, bby1:bby2]
-    lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (x.size()[-1] * x.size()[-2]))
-    
-    return x, y_a, y_b, lam
+
+    lam = 1.0 - ((bbx2 - bbx1) * (bby2 - bby1) / (x.size(-1) * x.size(-2)))
+
+    return x, y_a, y_b, float(lam)
 
 
-def main():
-    """Main training pipeline."""
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+def main() -> None:
+    """Executes the main training pipeline."""
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f'Using device: {device}')
 
     normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], 
+        mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]
     )
 
@@ -102,22 +147,22 @@ def main():
     ])
 
     train_dataset = datasets.ImageFolder(
-        f"{DATA_DIR}/train", 
+        os.path.join(DATA_DIR, 'train'),
         train_transforms
     )
     val_dataset = datasets.ImageFolder(
-        f"{DATA_DIR}/val", 
+        os.path.join(DATA_DIR, 'val'),
         val_transforms
     )
 
-    train_loader = DataLoader(
+    train_loader = torch_data.DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=8,
         pin_memory=True,
     )
-    val_loader = DataLoader(
+    val_loader = torch_data.DataLoader(
         val_dataset,
         batch_size=BATCH_SIZE,
         shuffle=False,
@@ -125,12 +170,10 @@ def main():
         pin_memory=True,
     )
 
-    # 2. Model setup (ResNet-101 ImageNet_v2)
-    print("Loading ResNet-101 (ImageNet_V2 weights) for full fine-tuning...")
+    print('Loading ResNet-101 (ImageNet_V2) for full fine-tuning...')
     weights = models.ResNet101_Weights.IMAGENET1K_V2
     model = models.resnet101(weights=weights)
 
-    # Set up the classifier explicitly without freezing the backbone
     in_features = model.fc.in_features
     hidden_dim = 512
     model.fc = nn.Sequential(
@@ -143,35 +186,33 @@ def main():
     model = model.to(device)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
-    
-    # Pass all model parameters to the optimizer
+
     optimizer = optim.AdamW(
-        model.parameters(), 
-        lr=LR, 
+        model.parameters(),
+        lr=LR,
         weight_decay=WEIGHT_DECAY
     )
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, 
+        optimizer,
         T_max=EPOCHS
     )
 
     best_val_acc = 0.0
 
-    # 4. Training loop
     for epoch in range(EPOCHS):
         model.train()
         train_loss = 0.0
-        train_correct = 0
+        train_correct = 0.0
         train_total = 0
 
         train_pbar = tqdm(
-            train_loader, 
-            desc=f"Epoch {epoch + 1}/{EPOCHS} [Train]"
+            train_loader,
+            desc=f'Epoch {epoch + 1}/{EPOCHS} [Train]'
         )
         for inputs, labels in train_pbar:
             inputs = inputs.to(device)
             labels = labels.to(device)
-            
+
             r_val = np.random.rand()
             if r_val < 0.33:
                 inputs, targets_a, targets_b, lam = cutmix_data(
@@ -179,30 +220,30 @@ def main():
                 )
                 outputs = model(inputs)
                 loss = (
-                    criterion(outputs, targets_a) * lam 
+                    criterion(outputs, targets_a) * lam
                     + criterion(outputs, targets_b) * (1. - lam)
                 )
                 _, predicted = outputs.max(1)
-                
+
                 correct_a = predicted.eq(targets_a).sum().item()
                 correct_b = predicted.eq(targets_b).sum().item()
                 train_correct += (lam * correct_a + (1 - lam) * correct_b)
-                
+
             elif r_val < 0.66:
                 inputs, targets_a, targets_b, lam = mixup_data(
                     inputs, labels, alpha=1.0
                 )
                 outputs = model(inputs)
                 loss = (
-                    criterion(outputs, targets_a) * lam 
+                    criterion(outputs, targets_a) * lam
                     + criterion(outputs, targets_b) * (1. - lam)
                 )
                 _, predicted = outputs.max(1)
-                
+
                 correct_a = predicted.eq(targets_a).sum().item()
                 correct_b = predicted.eq(targets_b).sum().item()
                 train_correct += (lam * correct_a + (1 - lam) * correct_b)
-                
+
             else:
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
@@ -216,23 +257,22 @@ def main():
             train_loss += loss.item() * inputs.size(0)
             train_total += labels.size(0)
             train_pbar.set_postfix(
-                loss=loss.item(), 
+                loss=loss.item(),
                 acc=(train_correct / train_total)
             )
 
         epoch_train_acc = train_correct / train_total
         avg_train_loss = train_loss / train_total
 
-        # --- Validation phase ---
         model.eval()
         val_loss = 0.0
-        val_correct = 0
+        val_correct = 0.0
         val_total = 0
         val_pbar = tqdm(
-            val_loader, 
-            desc=f"Epoch {epoch + 1}/{EPOCHS} [Val]"
+            val_loader,
+            desc=f'Epoch {epoch + 1}/{EPOCHS} [Val]'
         )
-        
+
         with torch.no_grad():
             for inputs, labels in val_pbar:
                 inputs = inputs.to(device)
@@ -249,18 +289,24 @@ def main():
         avg_val_loss = val_loss / val_total
         scheduler.step()
 
-        print(f"\nEpoch {epoch + 1}/{EPOCHS} Summary:")
-        print(f"Train Acc:      {epoch_train_acc:.4f} | Loss: {avg_train_loss:.4f}")
-        print(f"Validation Acc: {epoch_val_acc:.4f} | Loss: {avg_val_loss:.4f}")
+        print(f'\nEpoch {epoch + 1}/{EPOCHS} Summary:')
+        print(
+            f'Train Acc:      {epoch_train_acc:.4f} | '
+            f'Loss: {avg_train_loss:.4f}'
+        )
+        print(
+            f'Validation Acc: {epoch_val_acc:.4f} | '
+            f'Loss: {avg_val_loss:.4f}'
+        )
 
         if epoch_val_acc > best_val_acc:
             best_val_acc = epoch_val_acc
             save_checkpoint = {
                 'model_state_dict': model.state_dict(),
-                'classes': train_dataset.classes  
+                'classes': train_dataset.classes
             }
             torch.save(save_checkpoint, SAVE_PATH)
-            print(f"🌟 Saved Best Model! (Val Acc: {best_val_acc:.4f})\n")
+            print(f'🌟 Saved Best Model! (Val Acc: {best_val_acc:.4f})\n')
 
 
 if __name__ == '__main__':
